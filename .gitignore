@@ -33,6 +33,7 @@ htmlcov/
 
 # Project data
 data/
+qdrant_storage/
 
 # Logs
 logs/
