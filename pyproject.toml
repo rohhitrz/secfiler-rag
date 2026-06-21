@@ -1,0 +1,15 @@
+[project]
+name = "secfiler-rag"
+version = "0.1.0"
+description = "A RAG system that works on SEC filings and can answer questions based on the content of those filings."
+readme = "README.md"
+authors = [
+    { name = "rohhitrz", email = "rohhit.rz@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = []
+
+
+[build-system]
+requires = ["uv_build>=0.11.21,<0.12.0"]
+build-backend = "uv_build"
