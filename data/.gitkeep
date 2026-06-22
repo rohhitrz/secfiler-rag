@@ -1,0 +1,5 @@
+# Project data — raw filings are large + reproducible, keep dir skeleton only
+data/*
+!data/raw/
+data/raw/*
+!data/.gitkeep

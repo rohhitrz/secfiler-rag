@@ -32,7 +32,8 @@ htmlcov/
 .ruff_cache/
 
 # Project data
-data/
+data/*
+!data/.gitkeep
 qdrant_storage/
 
 # Logs
