@@ -11,7 +11,7 @@
 - **Owner:** Rohit (`rohhitrz` on GitHub) — MERN dev (~6 months backend), learning AI engineering. North star: hireable as a remote AI engineer.
 - **Mentor:** Claude, operating under the S2 RAG session contract (see "Working Rules" below).
 - **Repo (local):** `/Users/rohit/Desktop/secfiler-rag`
-- **Repo (remote):** Not pushed yet. Planned push after Module 4 (vectorless baseline).
+- **Repo (remote):** **LIVE — public at github.com/rohhitrz/secfiler-rag** (pushed Chat 3).
 
 ---
 
@@ -19,11 +19,12 @@
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Corpus | Apple + Microsoft + Tesla 10-Ks (latest FY) | Real, messy, sellable use case |
+| Corpus | Apple + Microsoft + Tesla 10-Ks (latest = **all FY2025**) | Real, messy, sellable use case |
 | Vector DB | Qdrant in Docker (`qdrant/qdrant:v1.18.2`) | Production-grade, native hybrid, first-class metadata filtering |
 | Embedding model (baseline) | OpenAI `text-embedding-3-small` | Cheap, fast, strong baseline. Voyage `voyage-finance-2` is the measured-upgrade candidate |
 | Reranker (Module 6) | Cohere Rerank | Free tier covers learning. `bge-reranker-large` is the self-hosted alternative |
 | BM25 library | `rank-bm25` (Module 4) | Pure Python, dependency-free, perfect for our vectorless baseline |
+| HTML parsing | BeautifulSoup4 + `html.parser` | Standard, handles malformed markup; `html.parser` = zero extra deps, fine for 1–8MB files. lxml NOT needed (verified `^ix:` regex works under html.parser) |
 | Web framework | FastAPI | Async-native, Pydantic-validated, OpenAPI docs built-in |
 | Python | 3.13 | Already installed; ecosystem supports it as of mid-2026 |
 | Package manager | `uv` (project-local `.venv/`) | Fast, lockfile-based, modern Python standard |
@@ -40,142 +41,137 @@
 
 ## What's built so far
 
-### ✅ Module 0 — Plan & opening checkpoint (done)
-- Roadmap reviewed, four sanity-check picks confirmed, opening checkpoint passed.
+### ✅ Modules 0–2 (done)
+- M0 Plan & opening checkpoint; M1 Big Picture & Market Context; M2 Foundations & Mental Models (embeddings, vector space, cosine sim, chunking strategies, vectorless vs vector). All checkpoints passed. (Full detail in prior PROGRESS versions / repo history.)
 
-### ✅ Module 1 — Big Picture & Market Context (done)
-- RAG architecture diagram (indexing + query phases) — Rohit can redraw from memory.
-- Three problems RAG solves vs. fine-tuning vs. long-context vs. bigger LLM — internalized.
-- Job market context (titles, bands, what interviewers test) — covered.
-- Checkpoint: legal-assistant fine-tuning critique + architecture redraw — passed.
+### ✅ Module 3 — Stack & Repo Setup (COMPLETE — all 4 phases)
+- Phase 1: tool decisions defended. Phase 2: `uv init` scaffold, `pyproject.toml`, full `src/secfiler_rag/{api,core,rag,models}` layout, comprehensive `.gitignore`, branch `main`. Phase 3: Docker + Qdrant `v1.18.2` via docker-compose, persistent volume, verified. Phase 4: deps (`fastapi`, `uvicorn[standard]`, `pydantic-settings`, `qdrant-client`), `.env`/`.env.example`, typed `config.py` (pydantic-settings v2), `main.py` with `GET /` + async `GET /health` (real `AsyncQdrantClient` connectivity check, 200/503 both curl-verified).
+- Commits through `f419ea4`.
 
-### ✅ Module 2 — Foundations & Mental Models (done)
-- Embeddings (distributional ≠ referential meaning — Rohit caught an imprecision)
-- Vector space, cosine similarity (with the "describes vs contains" distinction)
-- Chunking strategies (fixed / recursive / semantic / structure-aware)
-- Vectorless vs vector framing — covered properly
-- Checkpoint (5 questions): verdicts all correct, depth thin in places — passed.
+### 🔄 Module 4 — Vectorless Baseline (BM25) — IN PROGRESS
 
-### ✅ Module 3 — Stack & Repo Setup (COMPLETE — all 4 phases done)
-- **Phase 1 (Tool decisions):** Qdrant vs alternatives, embedding model choice, reranker, BM25, FastAPI, Python 3.13, `uv`, Next.js — opinions defended.
-- **Phase 2 (Repo scaffold):**
-  - `uv init --package --python 3.13` ran cleanly
-  - `pyproject.toml` shaped (real description, no dead `[project.scripts]`)
-  - `__init__.py` minimal (just `__version__`)
-  - Full structure: `src/secfiler_rag/{api,core,rag,models}/__init__.py`, `tests/__init__.py`, `main.py`, `config.py`
-  - Comprehensive `.gitignore` with sections for secrets, macOS, IDE, testing, type-checker, project data, logs
-  - Renamed branch `master → main`
-  - **Commit `1eb15fe`** — initial scaffold
-- **Phase 3 (Docker & Qdrant):**
-  - Docker Desktop installed, verified with `hello-world`
-  - `docker-compose.yml` written with pinned `qdrant/qdrant:v1.18.2`, ports 6333+6334, persistent volume `./qdrant_storage/`
-  - `qdrant_storage/` added to gitignore
-  - `docker compose up -d` ran successfully; Qdrant verified three ways (docker ps, curl version JSON, dashboard loads)
-  - **Commit `626b14e`** — Qdrant via docker-compose
-- **Phase 4 (Env config + FastAPI service skeleton) — COMPLETE:**
-  - **4.1 — Dependencies:** `uv add fastapi 'uvicorn[standard]' pydantic-settings qdrant-client`; `.venv/` + `uv.lock` (110KB); imports verified.
-    - **Commit `41f5cd8`**
-  - **4.2 — Env files:** `.env` (real `OPENAI_API_KEY`, local `QDRANT_URL`, blank `QDRANT_API_KEY`, gitignored); `.env.example` (commented template, tracked). Verified `.env` invisible to git.
-    - **Commit `c9e5c0a`**
-  - **4.3 — `config.py`:** Typed `Settings(BaseSettings)` via `pydantic-settings`. `model_config = SettingsConfigDict(env_file=".env")` (native v2 loading, NOT `load_dotenv`, NOT `class Config:`). Fields: `OPENAI_API_KEY: str` (required), `QDRANT_URL: str = "http://localhost:6333"` (defaulted — boots with zero config), `QDRANT_API_KEY: str | None = None` (genuinely optional — local Qdrant has no auth). Module-level `settings = Settings()` export. Verified loading via `uv run python -c`.
-    - **Commit `[5th commit]`** — Add typed Settings via pydantic-settings
-  - **4.4 — `main.py` root endpoint:** `app = FastAPI(title=..., version=__version__)`; `async def read_root()` on `GET /` returns truthful dict `{"service": "secfiler-rag", "status": "ok"}`. Boots under `uv run uvicorn secfiler_rag.main:app --reload`. `/docs` Swagger UI renders.
-    - **Commit `[6th commit]`** — Add FastAPI app with root endpoint
-  - **4.5 — `/health` endpoint (async-correct):** `async def health()` on `GET /health`. Uses **`AsyncQdrantClient`** (module-level, single instance) and `await qclient.get_collections()` to prove connectivity — honest non-blocking I/O (deliberately switched from sync client to make the `async def` truthful). Success → `{"status": "healthy", "qdrant": "connected"}` (200). Failure → `raise HTTPException(status_code=503, detail="Qdrant unreachable")`. **Both paths verified with `curl -i`:** 200 with Qdrant up, 503 after `docker compose stop`.
-    - **Commit `f419ea4`** — Add /health endpoint with async Qdrant connectivity check
+**Conceptual foundation (DONE):**
+- What BM25 is: lexical ranking — TF (with k1 saturation) + IDF (down-weight common, up-weight rare) + length normalization (b). No meaning, bag-of-words.
+- Why baseline-first (rule #5): vectors aren't free/always better; can't claim vectors helped without a measured baseline (rule #8); BM25 wins exact-terminology/defined-term queries; scaffolding (load/chunk/eval) is reused by the vector retriever anyway.
+- What BM25 *cannot* do: synonymy ("earnings" ≠ "net income"), paraphrase, word-order (bag-of-words), cross-lingual. **Canonical eval query to watch vectors beat BM25: "How did Apple's earnings change YoY?" — filing says "net income," BM25 scores ~0.**
+- Failure-modes mapping: BM25 attacks **retrieval noise**; defenseless vs **embedding mismatch**/synonymy (that's Module 5's job); downstream of **bad chunking**.
+- Checkpoint passed (BM25-wins-vs-loses-badly query construction; "exact number" tightened → "exact terminology/defined terms" — numbers ride along, words rank).
+
+**GitHub push (DONE — repo now public):**
+- `gh`/manual push completed; `main` tracks `origin/main`. NOTE: a throwaway commit `4b6de52 "first commit"` (one-line README) sits in history from the push step — cosmetic blemish, left as-is (already public, not worth history rewrite). Going forward: atomic messages only.
+- `.env` confirmed untracked; `git ls-files | grep -i env` shows only `.env.example`. No secret leak.
+
+**Corpus sourcing (DONE):**
+- Learned EDGAR by hand: CIK, filing-list vs single-filing-index distinction, the rigid `Item N` 10-K structure (Part I–IV; Item 1A Risk Factors, Item 7 MD&A = where eval answers live; Item 8 = tables, handled poorly by BM25/naive chunking — note for later).
+- The `ix?doc=` URL is the inline-XBRL **viewer**; strip `ix?doc=` → raw `/Archives/...` `.htm` is what we save.
+- **EDGAR requires a User-Agent header** on automated requests (name + email) or it blocks/empties the response.
+- Three raw filings downloaded via `curl -A "Rohit <email>"` into `data/raw/`, renamed company-keyed:
+  - `aapl-2025.htm` (1.4M) — CIK 320193, accession 000032019325000079, FY ended 2025-09-27
+  - `msft-2025.htm` (7.8M) — CIK 789019, accession 000095017025100235, FY ended 2025-06-30
+  - `tsla-2025.htm` (2.3M) — CIK 1318605, accession 000162828026003952, FY ended 2025-12-31
+  - (All three are FY2025. Fiscal-year-ends differ — Sep/Jun/Dec — so eval questions must be **company-scoped**, not "compare FY2025 across all three.")
+
+**`data/` dir + gitignore (DONE):**
+- `data/raw/` for source HTML (gitignored), `data/.gitkeep` tracked to preserve skeleton.
+- gitignore gotcha learned: `data/` (directory ignore) makes git refuse to descend → `!data/.gitkeep` can't rescue. Fix = **contents-pattern**: `data/*` + `!data/.gitkeep`.
+- **Commit `009f60d`** — "Add gitignored data/ directory for raw filings".
+
+**`load_filing_text()` — HTML/XBRL → clean text (DONE & VERIFIED on all 3):**
+- File: `src/secfiler_rag/rag/ingest.py`. First of TWO single-responsibility ingestion functions (strip is separate from chunk — they change for different reasons; chunker will be rewritten many times, cleaner stays frozen).
+- Reads via `Path(path).read_text(encoding="utf-8")`; `BeautifulSoup(content, "html.parser")`; decomposes `script`/`style`/`head` AND the entire inline-XBRL namespace (`soup.find_all(re.compile(r"^ix:"))`); `get_text(separator=" ", strip=True)` then `" ".join(text.split())`.
+- **The lesson:** raw `.get_text()` leaked XBRL junk (`fasb.org/us-gaap/...` taxonomy URLs, `P1Y` period markers, CIK, flags). Diagnosed by reading `print(repr(text[:500]))` — the junk's *vocabulary* (URLs/type-codes/IDs) fingerprints its source (the `ix:` machine-data layer). Method to keep: extract → `repr` the output → read the junk → trace to its tag → decompose → re-verify.
+- Verified clean on all three: each opens with "UNITED STATES SECURITIES AND EXCHANGE COMMISSION Washington, D.C. 20549". Clean char counts: AAPL 158,914 · MSFT 215,979 · TSLA 238,562. (MSFT's 7.8MB raw → 216K clean confirms bloat was markup, not content.)
+- Known cosmetic artifacts (NOT bugs, left as-is): cover-page XBRL-tagged *values* (fiscal-year-end date, file number) are blank because their `ix:` tags were correctly decomposed — fine, we're not extracting financials from XBRL here. MSFT surfaces one markdown-style `<a>` link. Harmless for BM25.
+- **Commit `f084485`** — "Add load_filing_text: strip HTML/XBRL from raw 10-Ks".
 
 ---
 
 ## Current state
 
-- **Branch:** `main`
-- **Latest commit:** `f419ea4 Add /health endpoint with async Qdrant connectivity check`
-- **Total commits:** 7 (all on `main`, all clean atomic changes)
-- **Working tree:** clean (`git status` shows no changes pending)
-- **Qdrant:** running locally on `:6333` / `:6334`, dashboard at `http://localhost:6333/dashboard` (was stopped/started during 4.5 health-check testing — confirm it's UP with `docker compose start` before resuming)
-- **FastAPI app:** boots, serves `GET /` and `GET /health`, `/docs` renders. Run: `uv run uvicorn secfiler_rag.main:app --reload`
-- **Python venv:** created, 4 deps installed and importing cleanly
-- **Local files NOT in git (intentional):** `.env`, `.venv/`, `qdrant_storage/`, `.vscode/`
-- **Files staged but not committed:** none
+- **Branch:** `main`. **Latest commit:** `f084485`. Local `main` is **~3 commits ahead of `origin/main`** (origin last saw `4b6de52`) — push at next natural break.
+- **Working tree:** clean.
+- **Qdrant:** running on `:6333`/`:6334` (`docker compose ps` → Up). Dashboard `http://localhost:6333/dashboard`.
+- **FastAPI app:** boots, serves `GET /` + async `GET /health`. Run: `uv run uvicorn secfiler_rag.main:app --reload`.
+- **Deps installed:** fastapi, uvicorn[standard], pydantic-settings, qdrant-client, **beautifulsoup4** (added Chat 3). lxml NOT installed (not needed).
+- **Corpus:** 3 raw 10-Ks in `data/raw/` (gitignored), all FY2025, all verified-clean through `load_filing_text`.
+- **Local files NOT in git (intentional):** `.env`, `.venv/`, `qdrant_storage/`, `.vscode/`, `data/raw/*`.
 
 ---
 
 ## What's next (immediate)
 
-**Resume at:** Phase 4 is DONE. Next is the GitHub push, then Module 4 (BM25 baseline).
+**Resume at: Module 4 — the CHUNKER (step 2 of 2 of ingestion). This is a big implement-it-yourself beat.**
 
 ### Immediate sequence:
-1. **Commit this updated PROGRESS.md** — `git add PROGRESS.md && git commit -m "Update progress: Phase 4 complete"`.
-2. **First push to GitHub** (repo becomes visible from this point):
-   `gh repo create rohhitrz/secfiler-rag --public --source=. --remote=origin --push`
-3. **Begin Module 4 — Vectorless Baseline (BM25).** Honest keyword-search baseline BEFORE any vectors (working rule #5). Library: `rank-bm25` (locked decision). This is where real RAG work starts — we need the 10-K corpus ingested and chunked first, so Module 4 likely opens with: source the filings (SEC EDGAR, Kaggle fallback), then chunk, then BM25 index, then a baseline retrieval query.
+1. **(optional housekeeping)** `git push` to sync origin (local is ~3 ahead).
+2. **Spec + implement the chunker** — second ingestion function, takes the clean text from `load_filing_text` and splits into chunks. Raw Python first (rule #4 — NO LangChain text splitter yet). Open question to decide at spec time: chunk strategy. The 10-K's rigid `Item N` structure is a natural **structure-aware** boundary candidate vs. fixed-size/recursive. Decide and justify. Consider: chunk size, overlap, whether to attach metadata (company ticker, which Item) to each chunk — metadata matters because eval is company-scoped and Qdrant filtering will use it later.
+3. **Build the BM25 index** over the chunks (`rank-bm25`, locked). Raw mechanics first.
+4. **Run a baseline retrieval query** — first honest retrieval numbers. Likely use the "earnings vs net income" query to *demonstrate* BM25's synonymy blind spot live (sets up Module 5).
 
-### Known prerequisite for Module 4:
-- **Corpus acquisition not done yet.** No 10-K files downloaded. Module 4 starts with getting Apple/Microsoft/Tesla 10-Ks from SEC EDGAR (or Kaggle fallback) into the repo's (gitignored) data directory.
+### Known prerequisites/notes for the chunker:
+- `load_filing_text` returns one flat string per filing — no structure preserved yet. If we want structure-aware chunking by `Item`, the chunker (or a helper) needs to *detect* Item boundaries in the flat text (regex on "Item 1A." etc.) — or we accept fixed/recursive for the baseline and revisit. Decide at spec.
+- Tables (Item 8) survive as mangled inline text after stripping — flag for later, don't solve in baseline.
 
 ---
 
 ## Open questions / known gotchas
 
-- **`/health` async client is now honest** — switched to `AsyncQdrantClient` in 4.5, no longer blocks the event loop. Resolved.
-- **`except Exception as e` in `/health`** — `e` is currently unused (cosmetic; can drop `as e`). Non-blocking.
-- **`qdrant/qdrant:v1.18.2` is pinned.** When deploying in Module 12, evaluate whether to switch to `-unprivileged` variant for production. For local dev, plain `v1.18.2` is fine.
-- **`.python-version` says `3.13`, `pyproject.toml` says `requires-python = ">=3.13"`** — both aggressive. Soften to `>=3.12` if deployment platform doesn't support 3.13.
-- **No tests written yet.** A `tests/test_health.py` hitting `/health` is a natural early test — was deferred during Phase 4, worth picking up.
-- **No `.dockerignore` yet** — needed when we add a `Dockerfile` for the FastAPI app (Module 12).
-- **No code formatter run yet** — several files have PEP 8 spacing nits (`app=FastAPI`, `{"key":val}`). A `ruff`/`black` pass would clean them in one shot; deferred as low-priority.
+- **Throwaway `4b6de52 "first commit"` in public history** — cosmetic, left as-is.
+- **`except Exception as e` in `/health`** — `e` unused (cosmetic; can drop `as e`). Non-blocking.
+- **`qdrant/qdrant:v1.18.2` pinned** — evaluate `-unprivileged` variant at deploy (Module 12).
+- **`requires-python = ">=3.13"`** — aggressive; soften to `>=3.12` if deploy platform lacks 3.13.
+- **No tests yet** — `tests/test_health.py` is the natural first; `tests/test_ingest.py` (assert clean text, no `fasb.org`/`<` in output) is a natural second now that ingest exists.
+- **No `.dockerignore`** — needed when FastAPI Dockerfile lands (Module 12).
+- **No formatter run** — minor PEP 8 nits across files (`app=FastAPI`, tight dict colons). A `ruff`/`black` pass cleans in one shot; deferred low-priority. (Reference `ingest.py` already hoists constants + orders imports if you want to match it.)
 
 ---
 
 ## Working rules (the contract — must be respected in every session)
 
-These are non-negotiable. New chats must reload and respect them.
-
-1. **Spec → Rohit implements the entire function/file → Claude reviews like senior code review → Claude shows reference version AFTER the attempt, never before.**
+1. **Spec → Rohit implements the entire function/file → Claude reviews like senior code review → reference AFTER the attempt, never before.**
 2. **No line-by-line dictation.** Function-level building.
 3. **No pasted code before Rohit attempts.** In learning mode, Claude refuses to "just write it."
-4. **Raw Python before framework.** Build chunking, embedding calls, similarity, prompt assembly from scratch ONCE — then show the LangChain version.
+4. **Raw Python before framework.** Build chunking/embedding/similarity/prompt-assembly from scratch ONCE, then show the LangChain version.
 5. **Vectorless before vector.** Honest baseline first.
-6. **Production-shape from commit #1.** No "I'll refactor later."
-7. **Docker from the start.** Real containers, real networks, real volumes.
+6. **Production-shape from commit #1.** No "refactor later."
+7. **Docker from the start.**
 8. **Eval numbers before bragging.** Module 9 is the truth gate.
 9. **Every module/sub-step ends with a checkpoint** — Rohit answers/implements BEFORE the reference appears.
 10. **Rohit never keeps a line he can't explain.**
-11. **No interview Q&A in public READMEs.** (Anti-pattern flagged by Rohit himself.)
-12. **Failure-modes framework as recurring lens** — name which failure mode each feature kills. (NOTE: some features — typed config, `/health` — kill *operational* failures, NOT one of the five RAG-quality modes. Recognizing the layer is part of the lesson.)
-13. **Audit Claude.** Rohit catches imprecision and pushes back; Claude tightens immediately.
-14. **(NEW this chat) Hold-questions go at the END of a sub-step, in their own clearly-marked block, after the commit step — never scattered mid-review.** Rohit answers them as the closing beat before moving on. This was added because mid-cycle questions got buried during the code-build loop.
+11. **No interview Q&A in public READMEs.**
+12. **Failure-modes framework as recurring lens** — name which mode each feature kills (and flag when a feature is *operational*, e.g. config/`/health`, not one of the 5 RAG-quality modes).
+13. **Audit Claude.** Rohit catches imprecision; Claude tightens immediately. (Chat 3 examples: Claude was stale on fiscal years — trust EDGAR over Claude's memory on "latest filing"; Claude can't fabricate accession-number URLs.)
+14. **Hold-questions go at the END of a sub-step, in their own clearly-marked block, after the commit step** — Rohit answers them as the closing beat before moving on.
+15. **(NEW Chat 3) Hold-questions must be VISUALLY DISTINCT and impossible to miss** — render them under a clear marked header (e.g. a `### ⛳ HOLD-QUESTIONS — answer before we move on` block, or bold/blockquote), not as plain trailing prose. Rohit reported they get lost when he's heads-down implementing and pasting back; this is a process fix, not a focus problem. Claude restates them if a reply skips them.
 
 ### Handoff protocol (Claude owns this)
+1. Update PROGRESS.md (full state, latest commit) — real downloadable file artifact.
+2. Fresh NEXT_CHAT_KICKOFF.md reflecting exact resume point — real file artifact.
+3. SESSION_BRIEF.md only if rules/decisions fundamentally changed (rule #15 added Chat 3 — fold into BRIEF next regeneration; captured here meanwhile).
+4. Proactively flag "context getting tight" at ~60–70% (Rohit opted to push to ~80% in Chat 3 — honor his stated budget but never past safe limits).
+5. Hand off at a clean milestone (after a commit / end of sub-step), not mid-implementation.
 
-At the end of every chat, BEFORE context runs out, Claude must:
-1. Update this PROGRESS.md with the current state (what's built, what's next, latest commit hash) — create as a real file artifact for Rohit to download and commit.
-2. Generate a fresh NEXT_CHAT_KICKOFF.md reflecting the exact resume point — also as a real file artifact.
-3. Only update SESSION_BRIEF.md if rules or fundamental decisions have changed; otherwise it's reused. (NOTE: rule #14 was added this chat — SESSION_BRIEF should get the hold-question rule folded in next time it's regenerated, but it's captured here in the meantime.)
-4. Proactively flag "context getting tight" at ~60-70% — don't wait until degradation starts.
-5. Hand off at a clean milestone (after a commit, end of a sub-step), not mid-implementation.
-
-### Steering commands Rohit may use
-`next` · `deeper` · `expand this point` · `skip` · `code` (= switch to build mode, NOT learning mode) · `quiz me` · `real-world` · `hireable?` · `product` · `reset rules`
+### Steering commands
+`next` · `deeper` · `expand this point` · `skip` · `code` (build mode) · `quiz me` · `real-world` · `hireable?` · `product` · `reset rules`
 
 ### Anti-patterns Claude must avoid
 - Dumping multiple modules at once
-- Jumping to mechanics before establishing conceptual "what is this" foundation
-- Bloated examples that overwhelm (flagged during the LangGraph module in S0)
-- Over-correcting after feedback (Rohit's 1-2 word → 80-word description swing is the canonical example)
-- Vibes-words in technical explanations without backing them up ("sane," "clean," "magic")
+- Jumping to mechanics before "what is this" foundation
+- Bloated overwhelming examples
+- Over-correcting after feedback (the 1–2 word → 80-word swing)
+- Vibes-words without backing ("sane," "clean," "magic")
 - Re-litigating settled decisions
-- Pushing a chat past safe context limits — proactively hand off
+- Pushing past safe context — proactively hand off
 
 ---
 
 ## Reference repos (use as guides, REBUILD never clone)
 
-- **`pdichone/production-course-main-code`** — technique grab-bag. Most important file: `rag_pipeline.py` (the one Rohit must be able to rebuild from blank).
-- **`pdichone/fcc-production-rag-part-6`** — 2026 advanced techniques. Building from: `02_contextual_retrieval.py` (Module 5.5) and `04_agentic_rag.py` (Module 8). Reading only: `01_long_context_vs_rag.py`, `03_late_chunking.py`, `05_graphrag_intro.py`, `06_multimodal_rag.py`.
-- **`pdichone/lang-production-api`** — production shape template. Stealing: `app/` layout, `render.yml`, `test_cache_demo.py` caching pattern. NOT copying: the Streamlit UI (we use Next.js).
+- **`pdichone/production-course-main-code`** — technique grab-bag; key file `rag_pipeline.py` (rebuild from blank).
+- **`pdichone/fcc-production-rag-part-6`** — 2026 advanced; building from `02_contextual_retrieval.py` (M5.5) + `04_agentic_rag.py` (M8); reading-only the rest.
+- **`pdichone/lang-production-api`** — production-shape template; stealing `app/` layout, `render.yml`, `test_cache_demo.py` caching. NOT copying Streamlit UI (we use Next.js).
 
-**Flag:** these repos use ChromaDB and Streamlit. We use Qdrant and Next.js. Translate patterns, don't copy API calls.
+**Flag:** these repos use ChromaDB + Streamlit. We use Qdrant + Next.js. Translate patterns, don't copy API calls.
 
 ---
 
@@ -183,31 +179,34 @@ At the end of every chat, BEFORE context runs out, Claude must:
 
 ```
 secfiler-rag/
-├── .env                       ← gitignored, has real OPENAI_API_KEY
+├── .env                       ← gitignored, real OPENAI_API_KEY
 ├── .env.example               ← committed, template
-├── .gitignore                 ← comprehensive
+├── .gitignore                 ← comprehensive; data/* + !data/.gitkeep added Chat 3
 ├── .python-version            ← "3.13"
-├── .venv/                     ← gitignored, 4 deps installed
-├── .vscode/                   ← gitignored
 ├── docker-compose.yml         ← Qdrant v1.18.2 pinned
-├── pyproject.toml             ← 4 deps in [project]
-├── uv.lock                    ← committed, ~110KB
-├── README.md                  ← empty placeholder
+├── pyproject.toml             ← 5 deps (added beautifulsoup4)
+├── uv.lock                    ← committed
+├── README.md                  ← one-line placeholder (from throwaway commit)
 ├── PROGRESS.md                ← THIS FILE (commit the updated version)
-├── qdrant_storage/            ← gitignored, Qdrant's data
+├── data/
+│   ├── .gitkeep               ← tracked
+│   └── raw/                   ← gitignored: aapl-2025.htm, msft-2025.htm, tsla-2025.htm
+├── qdrant_storage/            ← gitignored
 ├── src/
 │   └── secfiler_rag/
-│       ├── __init__.py        ← just __version__
-│       ├── main.py            ← DONE: FastAPI app, GET / + GET /health (async)
-│       ├── config.py          ← DONE: typed Settings via pydantic-settings
+│       ├── __init__.py        ← __version__
+│       ├── main.py            ← FastAPI app, GET / + GET /health (async)
+│       ├── config.py          ← typed Settings (pydantic-settings)
 │       ├── api/__init__.py
 │       ├── core/__init__.py
-│       ├── rag/__init__.py
+│       ├── rag/
+│       │   ├── __init__.py
+│       │   └── ingest.py      ← DONE: load_filing_text (HTML/XBRL strip). NEXT: chunker here.
 │       └── models/__init__.py
 └── tests/
-    └── __init__.py            ← no tests yet (test_health.py is a natural first)
+    └── __init__.py            ← no tests yet
 ```
 
 ---
 
-*Last updated: end of Chat 2 (Phase 4 COMPLETE — sub-steps 4.3/4.4/4.5, commits 5/6/7, latest `f419ea4`). Next: commit this file, push to GitHub, begin Module 4 (BM25 baseline). Update at the end of every session.*
+*Last updated: end of Chat 3 (Module 4 in progress — repo pushed public, corpus sourced + cleaned, `load_filing_text` done & verified on all 3 filings, latest commit `f084485`). Next: the chunker (step 2 of ingestion), then BM25 index, then baseline retrieval query. Update at the end of every session.*
