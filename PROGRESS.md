@@ -56,7 +56,7 @@
 - Vectorless vs vector framing — covered properly
 - Checkpoint (5 questions): verdicts all correct, depth thin in places — passed.
 
-### ✅ Module 3 — Stack & Repo Setup (Phases 1-3 done, Phase 4 in progress)
+### ✅ Module 3 — Stack & Repo Setup (COMPLETE — all 4 phases done)
 - **Phase 1 (Tool decisions):** Qdrant vs alternatives, embedding model choice, reranker, BM25, FastAPI, Python 3.13, `uv`, Next.js — opinions defended.
 - **Phase 2 (Repo scaffold):**
   - `uv init --package --python 3.13` ran cleanly
@@ -70,29 +70,30 @@
   - Docker Desktop installed, verified with `hello-world`
   - `docker-compose.yml` written with pinned `qdrant/qdrant:v1.18.2`, ports 6333+6334, persistent volume `./qdrant_storage/`
   - `qdrant_storage/` added to gitignore
-  - `docker compose up -d` ran successfully; Qdrant verified three ways:
-    - `docker ps` shows container Up, ports mapped
-    - `curl http://localhost:6333/` returns version JSON
-    - `http://localhost:6333/dashboard` loads in browser
+  - `docker compose up -d` ran successfully; Qdrant verified three ways (docker ps, curl version JSON, dashboard loads)
   - **Commit `626b14e`** — Qdrant via docker-compose
-- **Phase 4 sub-step 4.1:** Dependencies installed via `uv add fastapi 'uvicorn[standard]' pydantic-settings qdrant-client`
-  - `.venv/` created, `uv.lock` written (110KB), all four imports verified working
-  - **Commit `41f5cd8`** — FastAPI, uvicorn, pydantic-settings, qdrant-client
-- **Phase 4 sub-step 4.2:** Environment config files created
-  - `.env` with real `OPENAI_API_KEY`, local `QDRANT_URL`, blank `QDRANT_API_KEY` (gitignored, never committed)
-  - `.env.example` with comments above each variable, sensible default for `QDRANT_URL`, blank keys
-  - Verified: `.env` invisible to git, `.env.example` tracked
-  - **Commit `c9e5c0a`** — .env.example template
+- **Phase 4 (Env config + FastAPI service skeleton) — COMPLETE:**
+  - **4.1 — Dependencies:** `uv add fastapi 'uvicorn[standard]' pydantic-settings qdrant-client`; `.venv/` + `uv.lock` (110KB); imports verified.
+    - **Commit `41f5cd8`**
+  - **4.2 — Env files:** `.env` (real `OPENAI_API_KEY`, local `QDRANT_URL`, blank `QDRANT_API_KEY`, gitignored); `.env.example` (commented template, tracked). Verified `.env` invisible to git.
+    - **Commit `c9e5c0a`**
+  - **4.3 — `config.py`:** Typed `Settings(BaseSettings)` via `pydantic-settings`. `model_config = SettingsConfigDict(env_file=".env")` (native v2 loading, NOT `load_dotenv`, NOT `class Config:`). Fields: `OPENAI_API_KEY: str` (required), `QDRANT_URL: str = "http://localhost:6333"` (defaulted — boots with zero config), `QDRANT_API_KEY: str | None = None` (genuinely optional — local Qdrant has no auth). Module-level `settings = Settings()` export. Verified loading via `uv run python -c`.
+    - **Commit `[5th commit]`** — Add typed Settings via pydantic-settings
+  - **4.4 — `main.py` root endpoint:** `app = FastAPI(title=..., version=__version__)`; `async def read_root()` on `GET /` returns truthful dict `{"service": "secfiler-rag", "status": "ok"}`. Boots under `uv run uvicorn secfiler_rag.main:app --reload`. `/docs` Swagger UI renders.
+    - **Commit `[6th commit]`** — Add FastAPI app with root endpoint
+  - **4.5 — `/health` endpoint (async-correct):** `async def health()` on `GET /health`. Uses **`AsyncQdrantClient`** (module-level, single instance) and `await qclient.get_collections()` to prove connectivity — honest non-blocking I/O (deliberately switched from sync client to make the `async def` truthful). Success → `{"status": "healthy", "qdrant": "connected"}` (200). Failure → `raise HTTPException(status_code=503, detail="Qdrant unreachable")`. **Both paths verified with `curl -i`:** 200 with Qdrant up, 503 after `docker compose stop`.
+    - **Commit `f419ea4`** — Add /health endpoint with async Qdrant connectivity check
 
 ---
 
 ## Current state
 
 - **Branch:** `main`
-- **Latest commit:** `c9e5c0a Add .env.example template with OpenAI and Qdrant config`
-- **Total commits:** 4 (all on `main`, all clean atomic changes)
+- **Latest commit:** `f419ea4 Add /health endpoint with async Qdrant connectivity check`
+- **Total commits:** 7 (all on `main`, all clean atomic changes)
 - **Working tree:** clean (`git status` shows no changes pending)
-- **Qdrant:** running locally on `:6333` / `:6334`, dashboard at `http://localhost:6333/dashboard`
+- **Qdrant:** running locally on `:6333` / `:6334`, dashboard at `http://localhost:6333/dashboard` (was stopped/started during 4.5 health-check testing — confirm it's UP with `docker compose start` before resuming)
+- **FastAPI app:** boots, serves `GET /` and `GET /health`, `/docs` renders. Run: `uv run uvicorn secfiler_rag.main:app --reload`
 - **Python venv:** created, 4 deps installed and importing cleanly
 - **Local files NOT in git (intentional):** `.env`, `.venv/`, `qdrant_storage/`, `.vscode/`
 - **Files staged but not committed:** none
@@ -101,26 +102,28 @@
 
 ## What's next (immediate)
 
-**Resume at:** Phase 4 sub-step 4.3 — write `app/config.py`
+**Resume at:** Phase 4 is DONE. Next is the GitHub push, then Module 4 (BM25 baseline).
 
-### Sub-steps remaining in Phase 4:
-- **4.3 — `src/secfiler_rag/config.py`:** Pydantic Settings class that loads `.env` into a typed `Settings` object. Variables: `OPENAI_API_KEY`, `QDRANT_URL`, `QDRANT_API_KEY`. Uses `pydantic-settings` (already installed).
-- **4.4 — `src/secfiler_rag/main.py`:** FastAPI app with a hello-world `GET /` endpoint. Must boot with `uv run uvicorn secfiler_rag.main:app --reload`.
-- **4.5 — `/health` endpoint:** returns app status + verifies Qdrant connectivity by hitting the Qdrant client. Real connectivity check, not a fake "ok".
+### Immediate sequence:
+1. **Commit this updated PROGRESS.md** — `git add PROGRESS.md && git commit -m "Update progress: Phase 4 complete"`.
+2. **First push to GitHub** (repo becomes visible from this point):
+   `gh repo create rohhitrz/secfiler-rag --public --source=. --remote=origin --push`
+3. **Begin Module 4 — Vectorless Baseline (BM25).** Honest keyword-search baseline BEFORE any vectors (working rule #5). Library: `rank-bm25` (locked decision). This is where real RAG work starts — we need the 10-K corpus ingested and chunked first, so Module 4 likely opens with: source the filings (SEC EDGAR, Kaggle fallback), then chunk, then BM25 index, then a baseline retrieval query.
 
-### After Phase 4:
-- Commit Phase 4 as a coherent set of commits
-- Push to GitHub (`gh repo create rohhitrz/secfiler-rag --public --source=. --remote=origin --push`) — this is the FIRST push, so the repo becomes visible from this point.
-- Begin **Module 4 — Vectorless Baseline (BM25)**
+### Known prerequisite for Module 4:
+- **Corpus acquisition not done yet.** No 10-K files downloaded. Module 4 starts with getting Apple/Microsoft/Tesla 10-Ks from SEC EDGAR (or Kaggle fallback) into the repo's (gitignored) data directory.
 
 ---
 
 ## Open questions / known gotchas
 
+- **`/health` async client is now honest** — switched to `AsyncQdrantClient` in 4.5, no longer blocks the event loop. Resolved.
+- **`except Exception as e` in `/health`** — `e` is currently unused (cosmetic; can drop `as e`). Non-blocking.
 - **`qdrant/qdrant:v1.18.2` is pinned.** When deploying in Module 12, evaluate whether to switch to `-unprivileged` variant for production. For local dev, plain `v1.18.2` is fine.
 - **`.python-version` says `3.13`, `pyproject.toml` says `requires-python = ">=3.13"`** — both aggressive. Soften to `>=3.12` if deployment platform doesn't support 3.13.
-- **No tests written yet.** First test arrives with sub-step 4.5 (hitting `/health` from a `tests/test_health.py`).
+- **No tests written yet.** A `tests/test_health.py` hitting `/health` is a natural early test — was deferred during Phase 4, worth picking up.
 - **No `.dockerignore` yet** — needed when we add a `Dockerfile` for the FastAPI app (Module 12).
+- **No code formatter run yet** — several files have PEP 8 spacing nits (`app=FastAPI`, `{"key":val}`). A `ruff`/`black` pass would clean them in one shot; deferred as low-priority.
 
 ---
 
@@ -136,18 +139,19 @@ These are non-negotiable. New chats must reload and respect them.
 6. **Production-shape from commit #1.** No "I'll refactor later."
 7. **Docker from the start.** Real containers, real networks, real volumes.
 8. **Eval numbers before bragging.** Module 9 is the truth gate.
-9. **Every module ends with a checkpoint** — Rohit answers/implements BEFORE the reference appears.
+9. **Every module/sub-step ends with a checkpoint** — Rohit answers/implements BEFORE the reference appears.
 10. **Rohit never keeps a line he can't explain.**
 11. **No interview Q&A in public READMEs.** (Anti-pattern flagged by Rohit himself.)
-12. **Failure-modes framework as recurring lens** — name which failure mode each feature kills.
+12. **Failure-modes framework as recurring lens** — name which failure mode each feature kills. (NOTE: some features — typed config, `/health` — kill *operational* failures, NOT one of the five RAG-quality modes. Recognizing the layer is part of the lesson.)
 13. **Audit Claude.** Rohit catches imprecision and pushes back; Claude tightens immediately.
+14. **(NEW this chat) Hold-questions go at the END of a sub-step, in their own clearly-marked block, after the commit step — never scattered mid-review.** Rohit answers them as the closing beat before moving on. This was added because mid-cycle questions got buried during the code-build loop.
 
 ### Handoff protocol (Claude owns this)
 
 At the end of every chat, BEFORE context runs out, Claude must:
 1. Update this PROGRESS.md with the current state (what's built, what's next, latest commit hash) — create as a real file artifact for Rohit to download and commit.
 2. Generate a fresh NEXT_CHAT_KICKOFF.md reflecting the exact resume point — also as a real file artifact.
-3. Only update SESSION_BRIEF.md if rules or fundamental decisions have changed; otherwise it's reused.
+3. Only update SESSION_BRIEF.md if rules or fundamental decisions have changed; otherwise it's reused. (NOTE: rule #14 was added this chat — SESSION_BRIEF should get the hold-question rule folded in next time it's regenerated, but it's captured here in the meantime.)
 4. Proactively flag "context getting tight" at ~60-70% — don't wait until degradation starts.
 5. Hand off at a clean milestone (after a commit, end of a sub-step), not mid-implementation.
 
@@ -189,20 +193,21 @@ secfiler-rag/
 ├── pyproject.toml             ← 4 deps in [project]
 ├── uv.lock                    ← committed, ~110KB
 ├── README.md                  ← empty placeholder
+├── PROGRESS.md                ← THIS FILE (commit the updated version)
 ├── qdrant_storage/            ← gitignored, Qdrant's data
 ├── src/
 │   └── secfiler_rag/
 │       ├── __init__.py        ← just __version__
-│       ├── main.py            ← EMPTY (next: sub-step 4.4)
-│       ├── config.py          ← EMPTY (next: sub-step 4.3)
+│       ├── main.py            ← DONE: FastAPI app, GET / + GET /health (async)
+│       ├── config.py          ← DONE: typed Settings via pydantic-settings
 │       ├── api/__init__.py
 │       ├── core/__init__.py
 │       ├── rag/__init__.py
 │       └── models/__init__.py
 └── tests/
-    └── __init__.py
+    └── __init__.py            ← no tests yet (test_health.py is a natural first)
 ```
 
 ---
 
-*Last updated: end of Chat 1 (Phase 4 sub-step 4.2 complete). Update at the end of every session.*
+*Last updated: end of Chat 2 (Phase 4 COMPLETE — sub-steps 4.3/4.4/4.5, commits 5/6/7, latest `f419ea4`). Next: commit this file, push to GitHub, begin Module 4 (BM25 baseline). Update at the end of every session.*
