@@ -1,11 +1,11 @@
 from fastapi import FastAPI, HTTPException
 from secfiler_rag import __version__
-from qdrant_client import QdrantClient
+from qdrant_client import AsyncQdrantClient
 from secfiler_rag.config import settings
 
 
 app=FastAPI(title="secfiler rag", version=__version__)
-qclient=QdrantClient(settings.QDRANT_URL)
+qclient=AsyncQdrantClient(settings.QDRANT_URL)
 
 
 @app.get('/')
@@ -14,9 +14,9 @@ async def read_root():
 
 # to check if dependencies are reachable.
 @app.get('/health')
-async def healthCheck():
+async def health():
     try:
-        qclient.get_collections()
-        return {"status": "200-healthy", "qdrant":"connected"}
+        await qclient.get_collections()
+        return {"status": "healthy", "qdrant":"connected"}
     except Exception as e:
         raise HTTPException(status_code=503, detail="Qdrant unreachable")
