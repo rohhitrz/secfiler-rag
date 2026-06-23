@@ -1,7 +1,7 @@
 import re
 from pathlib import Path
-
 from bs4 import BeautifulSoup
+
 
 # Tags whose text is never human-readable content.
 _JUNK_TAGS = ["script", "style", "head"]

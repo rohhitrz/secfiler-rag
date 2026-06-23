@@ -40,3 +40,4 @@ qdrant_storage/
 logs/
 *.log
 
+scratch_bm25.py
