@@ -41,3 +41,6 @@ logs/
 *.log
 
 scratch_bm25.py
+
+# clean text file
+aapl_clean.txt
