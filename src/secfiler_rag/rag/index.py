@@ -1,8 +1,9 @@
 from secfiler_rag.config import settings
-from qdrant_client.models import VectorParams, Distance,PointStruct
+from qdrant_client.models import VectorParams, Distance,PointStruct,Filter,FieldCondition,MatchValue
 from qdrant_client import QdrantClient
 from secfiler_rag.rag.embed import embed_texts
 from secfiler_rag.rag.ingest import load_filing_text,chunk_text
+from uuid import uuid5, NAMESPACE_DNS
 
 client = QdrantClient(url=settings.QDRANT_URL)
 
@@ -25,9 +26,15 @@ def index_chunks(client,collection_name, chunks):
     vectors=embed_texts(texts)
 
     points=[]
-    for i,(chunk, vector) in enumerate(zip(chunks,vectors)):
+    for chunk, vector in zip(chunks,vectors):
+        point_id=str(
+            uuid5(
+                NAMESPACE_DNS,
+                f"{chunk['company']}-{chunk['chunk_id']}"
+            )
+        )
         points.append(PointStruct(
-            id=i,
+            id=point_id,
             vector=vector,
             payload=chunk
 
@@ -39,10 +46,18 @@ def index_chunks(client,collection_name, chunks):
     )
 
 if __name__=="__main__":
-    text=load_filing_text("data/raw/aapl-2025.htm")
-    chunks = chunk_text(text, company="aapl")
-
+    companies=['aapl','msft','tsla']
     name=get_or_create_collections()
-    index_chunks(client,name,chunks)
-    result=client.count(collection_name=name)
-    print(result.count)
+
+    for c in companies:
+        text=load_filing_text(f"data/raw/{c}-2025.htm")
+        chunks = chunk_text(text, company=c)
+        index_chunks(client,name,chunks)
+        result=client.count(
+        collection_name=name,
+        count_filter=Filter(
+        must=[FieldCondition(key="company", match=MatchValue(value=c))]
+    ),
+)       
+        print(f"{c}: {result.count} points")
+
