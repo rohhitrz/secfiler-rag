@@ -14,6 +14,18 @@ TIER_1 = [
         "expected_substring": "net sales",
         "company": "aapl",
     },
+    {
+        "query": "research and development",
+        "expected_substring": "research and development",
+        "company": "msft",
+    },
+
+    # Tesla
+    {
+        "query": "Megapack",
+        "expected_substring": "Megapack",
+        "company": "tsla",
+    },
 ]
 
 TIER_2 = [
@@ -22,6 +34,20 @@ TIER_2 = [
         "expected_substring": "net sales",
         "company": "aapl",
     },
+     # Microsoft
+    {
+        "query": "What are Microsoft's main business segments?",
+        "expected_substring": "Productivity and Business Processes",
+        "company": "msft",
+    },
+
+    # Tesla
+    {
+        "query": "What products make up Tesla's energy business?",
+        "expected_substring": "Powerwall",
+        "company": "tsla",
+    },
 ]
+
 
 EVAL_SET = TIER_1 + TIER_2

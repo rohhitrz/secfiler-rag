@@ -44,3 +44,5 @@ scratch_bm25.py
 
 # clean text file
 aapl_clean.txt
+msft_clean.txt
+tsla_clean.txt
