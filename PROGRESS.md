@@ -23,27 +23,28 @@
 | Vector DB | Qdrant in Docker (`qdrant/qdrant:v1.18.2`) | Production-grade, native hybrid, first-class metadata filtering |
 | Embedding model (baseline) | OpenAI `text-embedding-3-small` (**1536-dim**) | Cheap, fast, strong baseline. Voyage `voyage-finance-2` is the measured-upgrade candidate |
 | Reranker (Module 6) | Cohere Rerank | Free tier covers learning. `bge-reranker-large` is the self-hosted alternative |
-| BM25 library | `rank-bm25` (`BM25Okapi`) — **installed Chat 4** | Pure Python, dependency-free, perfect for our vectorless baseline |
-| HTML parsing | BeautifulSoup4 + `html.parser` | Standard, handles malformed markup; `html.parser` = zero extra deps, fine for 1–8MB files. lxml NOT needed |
+| BM25 library | `rank-bm25` (`BM25Okapi`) | Pure Python, dependency-free, perfect for our vectorless baseline |
+| HTML parsing | BeautifulSoup4 + `html.parser` | Standard, handles malformed markup; zero extra deps. lxml NOT needed |
 | Web framework | FastAPI | Async-native, Pydantic-validated, OpenAPI docs built-in |
-| Python | 3.13 | Already installed; ecosystem supports it as of mid-2026 |
+| Python | 3.13 | Already installed; ecosystem supports it |
 | Package manager | `uv` (project-local `.venv/`) | Fast, lockfile-based, modern Python standard |
 | Eval set | Hand-write 25 Q/A first (Module 9), then FinDER | Writing your own Q/A teaches what good eval looks like |
 | Frontend (Module 11) | Next.js 14+ App Router | Differentiator over backend-only portfolios — Rohit's MERN edge |
-| Failure-modes framework | Adopted as recurring lens (5 modes: bad chunking / embedding mismatch / retrieval noise / context overflow / hallucination) | Senior interview framing for diagnosing RAG failures |
-| Chunk strategy (baseline) | **Fixed-size + overlap (1000 chars / 200 overlap), raw Python** — decided Chat 4 | Honest simple baseline to beat. Structure-aware (Item N) + semantic both flagged as LATER measured experiments |
-| Chunk shape | **`dict`: `{"text", "company", "chunk_id"}`** — decided Chat 4 | Metadata-carrying records, not bare strings. company scopes eval; Qdrant filtering uses it in M5 |
-| Tokenizer (BM25) | **`lowercase + re.findall(r"[a-z0-9]+")`, raw Python, in `retrieve.py`** — decided Chat 4 | Single shared tokenizer for BOTH index + query (symmetry mandatory). No stemming/stopwords yet — tunable knobs added AFTER baseline number |
-| **Eval item shape** | **`{"query", "expected_substring", "company"}`** — decided Chat 5 | Substring-based answer key (Option B). Survives re-chunking (chunk_ids don't). `expected_substring` must be **distinctive + forgiving** — plain word runs, no punctuation-dense/® strings (those break the exact `in` match) |
-| **Eval set tiers** | **Tier 1 (lexical sanity) + Tier 2 (natural-language)** — decided Chat 5 | Tier 1 = near-tautological softballs, a regression guard that must always pass + proves the harness runs. Tier 2 = realistic human phrasing, the number that should move when vectors land. Both committed together as one suite |
-| **Eval harness shape** | **`evaluate(eval_set, search_fn, top_k)` — retriever-agnostic** — decided Chat 5 | Harness takes the retrieval fn as a parameter, never mentions BM25. Caller builds the index + passes a `search_fn` adapter. Module 5 reuses the SAME harness with a vector `search_fn`. Returns `{recall_at_k, hits, total, results}` (prints AND returns) |
-| **Eval code location** | **`src/secfiler_rag/rag/evaluate.py` (harness) + `evals/eval_set.py` (data)** — decided Chat 5 | Eval is measurement INFRASTRUCTURE, not debugging code — version-controlled, not gitignored scratch. Harness/data split: edit data (grow to 25, add tiers) without touching logic; swap retriever without touching data |
-| **Company casing convention** | **lowercase everywhere (`"aapl"`, `"msft"`, `"tsla"`)** — DECIDED & ENFORCED Chat 6 | Matches eval items + filenames (`aapl-2025.htm`). Chunker now stamps lowercase. Kills the silent Qdrant filter-mismatch (index `"AAPL"` vs eval `"aapl"` → zero results, no error). **Hold it everywhere.** |
-| **Qdrant point id (AAPL-only)** | **`id = i` (enumerate index 0..198), plain int** — decided Chat 6 | Qdrant ids must be int or UUID — a raw string like `"aapl-5"` is REJECTED. `id=i` is the minimal honest choice for single-company. **Multi-company will collide (every company restarts at 0) → switch to `uuid5(NAMESPACE, f"{company}-{chunk_id}")` when MSFT/TSLA land.** |
-| **Indexing client = sync, search client = async** | **sync `QdrantClient` for `index.py` (one-shot batch); `AsyncQdrantClient` for the FastAPI search path** — decided Chat 6 | Indexing is a batch script outside any request path → nothing gains from async. The served search path is in the event loop → async mandatory (`/health` already uses AsyncQdrantClient). Two lanes, both honest. NEVER sync-client-with-`await`. |
+| Failure-modes framework | 5 modes: bad chunking / embedding mismatch / retrieval noise / context overflow / hallucination | Senior interview framing for diagnosing RAG failures |
+| Chunk strategy (baseline) | **Fixed-size + overlap (1000 chars / 200 overlap), raw Python** | Honest simple baseline. ~800 chars/chunk effective stride (1000−200). Structure-aware + semantic flagged as LATER experiments |
+| Chunk shape | **`dict`: `{"text", "company", "chunk_id"}`** | Metadata-carrying records. company scopes eval + Qdrant filtering |
+| Tokenizer (BM25) | **`lowercase + re.findall(r"[a-z0-9]+")`, raw Python, in `retrieve.py`** | Single shared tokenizer for BOTH index + query (symmetry mandatory) |
+| Eval item shape | **`{"query", "expected_substring", "company"}`** | Substring answer key (Option B). Survives re-chunking. Substrings must be **distinctive + forgiving**, sourced from CLEANED text never browser |
+| Eval set tiers | **Tier 1 (lexical sanity) + Tier 2 (natural-language)** | Tier 1 = near-tautological regression guards + harness smoke test. Tier 2 = realistic phrasing, the number that should move |
+| Eval harness shape | **`evaluate(eval_set, search_fn, top_k)` — retriever-agnostic** | Harness takes retrieval fn as a param, never mentions BM25/vectors/company. Caller builds the index + passes a `search_fn` adapter. **FROZEN — never add domain knowledge to it.** |
+| Eval code location | **`src/secfiler_rag/rag/evaluate.py` (harness) + `evals/eval_set.py` (data)** | Eval is version-controlled measurement infra. Harness/data split |
+| Company casing convention | **lowercase everywhere (`"aapl"`, `"msft"`, `"tsla"`)** — ENFORCED | Matches eval items + filenames. Kills silent Qdrant filter-mismatch. **Hold it everywhere.** |
+| **Qdrant point id** | **`str(uuid5(NAMESPACE_DNS, f"{company}-{chunk_id}"))`** — DECIDED & SHIPPED Chat 7 | Deterministic → collision-proof across companies + idempotent re-index (re-run overwrites in place, no duplication). Replaced the `id=i` scheme (which collided: every company restarted at 0). **Separator (`-`) is load-bearing — changing it changes every id → duplicates a parallel set.** |
+| Indexing client vs search client | **sync `QdrantClient` for `index.py` (batch); `AsyncQdrantClient` for the FastAPI served path** | Indexing is a batch script outside any request path. Served search is in the event loop → async mandatory. NEVER sync-client-with-`await`. |
+| **Company scoping (multi-company retrieval)** | **Option A — payload filter on single `filings` collection** (NOT per-company collections) — DECIDED & SHIPPED Chat 7 | Soft query-time boundary (flexible) beats hard storage boundary (rigid). A single query can widen/narrow/drop the company filter; per-company collections would force manual fan-out + merge for any cross-company query. Less re-architecting too — one collection already indexed. |
 
-### Syllabus additions vs original spec
-- **Module 5.5 (NEW):** Contextual Retrieval (Anthropic's technique) — between vector RAG and hybrid
+### Syllabus additions / reorders vs original spec
+- **Module 5.5 (Contextual Retrieval) — MOVED TO THE VERY END** (Chat 7 decision). It's a measured-LIFT experiment; lift is only meaningful on a stable core. Will run as an extras/polish pass *after* the full RAG is built, not between vector and hybrid. Ref `pdichone/fcc-production-rag-part-6/02_contextual_retrieval.py`.
 - **Module 12 (extended):** Response caching pattern from `lang-production-api/test_cache_demo.py`
 - **Module 3 (reordered):** Production-shape repo from commit #1
 
@@ -55,103 +56,91 @@
 Plan, big picture/market context, foundations (embeddings, vector space, cosine sim, chunking strategies, vectorless vs vector). All checkpoints passed.
 
 ### ✅ Module 3 — Stack & Repo Setup (COMPLETE)
-- `uv init` scaffold, full `src/secfiler_rag/{api,core,rag,models}` layout, comprehensive `.gitignore`, branch `main`.
-- Docker + Qdrant `v1.18.2` via docker-compose, persistent volume, verified.
-- Deps: fastapi, uvicorn[standard], pydantic-settings, qdrant-client. `.env`/`.env.example`. Typed `config.py` (pydantic-settings v2). `main.py` with `GET /` + async `GET /health` (real `AsyncQdrantClient` check, 200/503 curl-verified).
+`uv init` scaffold, full `src/secfiler_rag/{api,core,rag,models}` layout, `.gitignore`, branch `main`. Docker + Qdrant `v1.18.2` via docker-compose, persistent volume. Deps: fastapi, uvicorn[standard], pydantic-settings, qdrant-client. Typed `config.py` (pydantic-settings v2). `main.py` with `GET /` + async `GET /health` (real `AsyncQdrantClient` check, 200/503 verified).
 
-### ✅ Module 4 — Vectorless Baseline (BM25) + Eval Harness — COMPLETE (Chat 5)
+### ✅ Module 4 — Vectorless Baseline (BM25) + Eval Harness — COMPLETE
+- **Ingestion:** `load_filing_text()` strips HTML + inline-XBRL via BeautifulSoup (clean chars: AAPL 158,914 · MSFT 215,979 · TSLA 238,562). `chunk_text(text, company, chunk_size=1000, overlap=200) -> list[dict]`, fixed-size + overlap, returns `{"text","company","chunk_id"}`.
+- **BM25 `retrieve.py`:** `tokenize()` (shared), `build_bm25_index() -> BM25Okapi`, `search(query, bm25, chunks, top_k=5) -> list[dict]`.
+- **Eval harness:** `evals/eval_set.py` + retriever-agnostic `evaluate(eval_set, search_fn, top_k=3)` in `rag/evaluate.py`. Prints per-item PASS/FAIL+rank AND returns `{recall_at_k, hits, total, results}`.
+- **BASELINE LOCKED: BM25 Recall@3 = 75% (3/4 AAPL).** Blind-spot ("total revenue"→"net sales") fails by design. Commit `bdb7885`.
+- **Process lesson:** eval substrings must come from CLEANED text, never the rendered browser page.
 
-**Conceptual foundation (Chat 3):** BM25 = TF (k1 saturation) + IDF + length-norm (b), bag-of-words, no meaning. Baseline-first. Can't do synonymy/paraphrase/word-order. Failure-mode mapping. Checkpoint passed.
+### ✅ Module 5 — Vector Retrieval — **COMPLETE (multi-company, audited)**
 
-**Ingestion `load_filing_text()` (Chat 3):** Strips HTML + inline-XBRL (`ix:`) via BeautifulSoup. Clean chars: AAPL 158,914 · MSFT 215,979 · TSLA 238,562.
+**Concept (Chat 6):** embedding = text→1536-dim vector positioned by meaning. Cosine = dot/(norm·norm). OpenAI vectors pre-normalized → Qdrant metric = Cosine.
 
-**Ingestion `chunk_text()` (Chat 4):** `chunk_text(text, company, chunk_size=1000, overlap=200) -> list[dict]`. Fixed-size + overlap, raw Python. `start += chunk_size - overlap`. Returns `{"text","company","chunk_id"}`. AAPL = 199 chunks. **Commit `97c76d6`.** (Chat 6: now called with `company="aapl"` lowercase.)
+**`embed.py` (Chat 6):** `embed_texts(texts) -> list[list[float]]` — batched OpenAI call, `text-embedding-3-small`, **sorted by `.index`** (prevents silent vector↔chunk misalignment). `cosine(a,b)` raw `math`. Proof: `net sales ↔ total revenue = 0.539` vs `↔ banana = 0.176`. Commit `0e95dcb`.
 
-**BM25 retrieval `retrieve.py` (Chat 4):** `tokenize()` (shared tokenizer), `build_bm25_index() -> BM25Okapi`, `search(query, bm25, chunks, top_k=5) -> list[dict]` with `float` score, sorted desc. **Commit `22a02d9`.** rank-bm25 dep: **`7753441`.**
+**`index.py` (Chat 6 → multi-company Chat 7):**
+- `get_or_create_collections()` — non-destructive, collection `"filings"`, size 1536, Cosine. **Outside the company loop** (one shared collection).
+- `index_chunks(client, name, chunks)` — batched `embed_texts` (ONE API call per company), one `PointStruct` per chunk, `id = str(uuid5(NAMESPACE_DNS, f"{company}-{chunk_id}"))`, single `upsert`.
+- `__main__` — loops `['aapl','msft','tsla']`, loads `data/raw/{c}-2025.htm`, chunks lowercase, indexes, then **per-company `client.count` with payload filter** (Rule #13). **VERIFIED: aapl=199, msft=270, tsla=299.**
+- **Chat 7 collision caught live:** first multi-run showed `aapl: 398` — the old `id=i` (int) points from Chat 6 didn't overwrite under the new uuid5 (str) scheme → duplication (uuid4-style failure, self-inflicted by scheme change). Fix: one-time `client.delete_collection("filings")` + clean rebuild → aapl back to 199. **The `delete_collection` line was a manual one-off, removed from `__main__` (would nuke + re-embed every run).** Commit `60a7c8d`.
 
-**🎯 EVAL HARNESS + FIRST BASELINE (Chat 5):**
-- **`evals/eval_set.py`** — `TIER_1` (3 lexical-sanity softballs: derivative instruments, global minimum tax standards, net sales) + `TIER_2` (1 natural-language blind-spot: "what was Apple's total revenue this year?" → expects `net sales`). `EVAL_SET = TIER_1 + TIER_2`.
-- **`src/secfiler_rag/rag/evaluate.py`** — retriever-agnostic `evaluate(eval_set, search_fn, top_k=3)`. Prints per-item PASS/FAIL+rank AND returns `{recall_at_k, hits, total, results}`. `__main__` = the BM25 caller.
-- **BASELINE LOCKED: BM25 Recall@3 = 75% (3/4).** Blind-spot FAILS by design (returned chunks 125/124/4, missed income statement, couldn't bridge "revenue"→"net sales"). Failure modes #2 + #3, measured. **Commit `bdb7885`.**
-- **Process lesson:** eval substrings must come from CLEANED text (`load_filing_text` output), never the rendered browser page. First run scored 0/4 from browser-copied substrings.
+**`search.py` (Chat 6 → company-scoped Chat 7) — THE NUMBER:**
+- `vector_search(query, company, top_k=3) -> list[dict]` — embeds query (`embed_texts([query])[0]`, same model = symmetry), builds `Filter(must=[FieldCondition(key="company", match=MatchValue(value=company))])`, passes as `query_filter` to `query_points` (note: `query_filter` for query_points vs `count_filter` for count). Reshapes points to `{**payload, "score": score}`.
+- **Caller (`__main__`):** `company_by_query = {item["query"]: item["company"] for item in EVAL_SET}` + named `search_fn(query, top_k)` that resolves company internally and calls `vector_search(query, company, top_k)`. **`evaluate` signature UNCHANGED** — caller absorbs all company knowledge (retriever-agnostic contract held). Single named fn, no lambda → sidesteps late-binding closure bug.
 
-### ✅ Module 5 — Vector Retrieval — **COMPLETE (Chat 6) — THE PAYOFF**
+  **🎯 RESULT: Vector Recall@3 = 100% (8/8) across aapl/msft/tsla.** Company routing verified non-cross-contaminating (each query filtered to its own company). Commit `af40542`.
 
-The whole module's purpose: beat the 75% BM25 baseline with embeddings, and watch the blind-spot flip. **Done, measured, audited.**
+  **Every pass AUDITED at chunk level (Rule #13 — read the chunk, don't trust the check):**
+  - aapl `total revenue`→ chunk 153 (income statement), the blind-spot FLIPPED FAIL→PASS at rank 1
+  - msft `research and development` → chunk 215 ✓ · msft business segments → chunk 18 "Productivity and Business Processes" ✓
+  - tsla `Megapack` → chunk 15 ✓ · tsla energy business → "Powerwall" confirmed in chunk 21 via **full-text `in` audit** (printed snippet truncated before it; `"Powerwall" in r["text"]` returned True for chunk 21). NOTE: "Powerwall" is **1-of-1 in the whole TSLA corpus** — fragile if re-chunked (the single occurrence could land in a non-retrieved chunk). Flag.
 
-**5.1–5.3 Conceptual foundation (Chat 6):** What an embedding is (text → fixed-length vector positioned by meaning, 1536-dim). Why "revenue" and "net sales" land near each other when BM25 can't connect them. Cosine = cosine of the angle between vectors (`dot / (norm·norm)`), ignores magnitude, range −1..1. OpenAI vectors come pre-normalized (norm ≈ 1) → cosine and dot rank identically → Qdrant metric = Cosine. Checkpoint passed.
-
-**`embed.py` — `embed_texts()` + `cosine()` (Chat 6):**
-- `embed_texts(texts: list[str]) -> list[list[float]]` — batched OpenAI call, `text-embedding-3-small`, returns ALL vectors **sorted by `.index`** (critical: prevents silent vector↔chunk misalignment if the API returns out of order). Key from typed `settings` (no side-channel config).
-- `cosine(a, b)` — raw `math`, full `dot / (norm·norm)` (not the dot-only shortcut, so it survives a non-normalized model swap).
-- **Proof measured:** `net sales ↔ total revenue = 0.539` vs `net sales ↔ banana = 0.176`. The synonymy bridge BM25 structurally cannot make, shown in numbers. **Commit `0e95dcb`** (atomic: `openai` dep + `embed.py`).
-
-**`index.py` — Qdrant indexing (Chat 6):**
-- `get_or_create_collections()` — non-destructive (`collection_exists` then create-if-missing, NOT `recreate`). Collection `"filings"`, `size=1536`, `distance=Cosine`.
-- `index_chunks(client, name, chunks)` — batched `embed_texts` (ONE API call for all 199 — saves per-request round-trips + rate-limit slots), builds one `PointStruct` per chunk (`id=i`, `vector`, `payload={text,company,chunk_id}`), single `upsert`. Accumulate pattern (`points=[]` before loop, append inside).
-- `__main__` — loads AAPL → `chunk_text(company="aapl")` → ensure collection → index → **`client.count` VERIFIED = 199** (Rule #13: confirm against live source). Sync `QdrantClient(url=...)`, no api_key locally (silenced insecure-connection warning). **Commit `268c60d`.**
-
-**`search.py` — `vector_search()` + eval re-run (Chat 6) — THE NUMBER:**
-- `vector_search(query, top_k=3) -> list[dict]` — embeds query via `embed_texts([query])[0]` (same model both sides — symmetry), `client.query_points(collection, query=vec, limit=top_k)`, reshapes each point to `{**point.payload, "score": point.score}` — the EXACT shape `evaluate` already consumes. Signature `(query, top_k)` matches `search_fn` directly → passed straight into `evaluate`, NO wrapper needed.
-- **Re-ran the SAME harness, only `search_fn` swapped:** `evaluate(EVAL_SET, vector_search, top_k=3)`.
-
-  **🎯 RESULT: Vector Recall@3 = 100% (4/4) — BEATS BM25's 75% (3/4).**
-  - **Blind-spot FLIPPED FAIL→PASS.** "what was Apple's total revenue this year?" → **rank 1 = chunk 153, the CONSOLIDATED STATEMENTS OF OPERATIONS** (score 0.60), ranks 2–3 = segment-revenue table (chunk 132/131, `Total net sales $416,161`, `iPhone $209,586`). **AUDITED (Rule #13): the RIGHT chunk surfaced, not a lucky "net sales" footnote.** Mode #2 (synonymy) killed, measured, on the exact motivating item.
-  - **Commit `10d3009`** (pushed to origin).
-
-**Honest findings from the audit (real data, not flaws):**
-- **`derivative instruments`** was rank 2 under BM25, dropped to **rank 3** under vectors. Still passes, but BM25 was *better* at this exact-lexical query. Vectors win on meaning, occasionally lose on exact-phrase match. **This is the measured motivation for HYBRID search (Module 6).**
-- **`net sales`** (bare lexical query) passes at rank 1, but rank-1 is chunk 24 (a licensing chunk); the real revenue chunks rank 2–3. Loosest of the four — a Tier-1 softball with a weird bare-phrase input. Legit pass, worth noting.
-- **Data-quality gotcha confirmed:** chunk 153 (income statement) has its dollar figures BLANKED (`Products $ $ $`) — table cell values stripped during HTML cleaning; structure survived, numbers didn't. Doesn't hurt retrieval; WILL hurt answer-generation later. (The "tables survive as mangled text" flag.)
+**Honest findings (real data):**
+- `derivative instruments` rank 2 (BM25) → rank 3 (vectors). Vectors win on meaning, lose on exact-lexical. **This is the measured motivation for HYBRID (Module 6).**
+- `net sales` (bare lexical) passes rank 1 but rank-1 is chunk 24 (licensing chunk) — loose substring, slightly-lucky pass. Tighten when growing Tier 2.
+- chunk 153 (income statement) has dollar figures BLANKED (`Products $ $ $`) — table cells stripped in HTML cleaning. Retrieval fine; WILL hurt answer-generation.
 
 ---
 
 ## Current state
 
-- **Branch:** `main`. **Latest commit:** `10d3009` (vector_search + 100% eval). Chain this chat: `0e95dcb` (embed+cosine) → `268c60d` (Qdrant index) → `10d3009` (vector search). All pushed to origin.
-- **Working tree:** only `PROGRESS.md` modified (this handoff update) — commit it after pasting.
-- **Qdrant:** running on `:6333`/`:6334`. Collection **`filings` now holds 199 AAPL points** (vectors + payloads). Dashboard `http://localhost:6333/dashboard`. **Qdrant is now LIVE and load-bearing** (no longer just running idle).
+- **Branch:** `main`. **Latest commit:** `af40542` (company-scoped retrieval + multi-company eval, 8/8). Chain: `0e95dcb` (embed) → `268c60d` (AAPL index) → `10d3009` (AAPL vector search) → `60a7c8d` (multi-company uuid5 index) → `af40542` (company filter + 8/8). All pushed.
+- **Working tree:** clean after the commit (only `PROGRESS.md` will be dirty once this handoff is pasted — commit it).
+- **Qdrant:** running `:6333`/`:6334`. Collection **`filings` holds 768 points: aapl=199, msft=270, tsla=299** (vectors + payloads, uuid5 ids). Dashboard `http://localhost:6333/dashboard`.
 - **FastAPI app:** boots, serves `GET /` + async `GET /health`. Run: `uv run uvicorn secfiler_rag.main:app --reload`.
-- **Deps installed:** fastapi, uvicorn[standard], pydantic-settings, qdrant-client, beautifulsoup4, rank-bm25, **openai** (Chat 6). lxml NOT installed.
-- **Corpus:** 3 raw 10-Ks in `data/raw/` (gitignored), all FY2025, verified-clean. **Only AAPL is embedded/indexed so far.**
-- **Eval harness:** `uv run python -m secfiler_rag.rag.evaluate` (BM25, 75%) · `uv run python -m secfiler_rag.rag.search` (vectors, 100%). Both AAPL-only.
-- **Local files NOT in git (intentional):** `.env`, `.venv/`, `qdrant_storage/`, `.vscode/`, `data/raw/*`, `scratch_bm25.py`, `aapl_clean.txt`.
+- **Deps installed:** fastapi, uvicorn[standard], pydantic-settings, qdrant-client, beautifulsoup4, rank-bm25, openai. lxml NOT installed. **Cohere NOT yet (Module 6).**
+- **Corpus:** 3 raw 10-Ks in `data/raw/` (gitignored), all FY2025. All three embedded + indexed.
+- **Eval harness:** `uv run python -m secfiler_rag.rag.evaluate` (BM25, AAPL-only, 75%) · `uv run python -m secfiler_rag.rag.search` (vectors, 3-company, **100% / 8/8**).
+- **Local files NOT in git (intentional):** `.env`, `.venv/`, `qdrant_storage/`, `.vscode/`, `data/raw/*`, `scratch_bm25.py`, `aapl_clean.txt`, **`msft_clean.txt`, `tsla_clean.txt`** (added Chat 7).
 
 ---
 
 ## What's next (immediate)
 
-**Resume at: Module 5.5 — Contextual Retrieval (Anthropic's technique), OR finish Module 5 multi-company first. Decide at the top of Chat 7.**
+**Resume at: Module 6 — Hybrid search (BM25 + vector) + Cohere reranker.**
 
-Two honest paths — pick with a reason in front of you:
+The motivation is already measured and in hand: `derivative instruments` showed BM25 beats vectors on exact-lexical (rank 2 vs rank 3). Hybrid fuses both; reranker cleans the merged list.
 
-1. **Multi-company finish (close out M5 properly):** index MSFT + TSLA, switch Qdrant `id` to `uuid5(NAMESPACE, f"{company}-{chunk_id}")` (the `id=i` collision fix — every company currently restarts at 0), add MSFT/TSLA eval items, change the caller to route by `item["company"]` (the evaluate signature does NOT change — that's the retriever-agnostic design). Get a 3-company recall number.
-2. **Module 5.5 Contextual Retrieval:** prepend LLM-generated context to each chunk before embedding (Anthropic's technique, ref `pdichone/fcc-production-rag-part-6/02_contextual_retrieval.py`). Measure recall lift vs the plain-vector 100%.
-3. **Module 6 Hybrid + reranker:** the measured motivation is already in hand (derivative-instruments showed BM25 beats vectors on exact-lexical). Combine BM25 + vectors + Cohere rerank.
+Rough module beat (spec each sub-step, Rohit implements, review after):
+1. **Foundation:** why hybrid — vectors win on synonymy/meaning, BM25 wins on exact-phrase/rare-token. Fusion strategies (RRF — Reciprocal Rank Fusion — vs weighted score combination). Why score normalization is needed (BM25 scores ~0–13, cosine ~0–1, not comparable raw).
+2. **Implement fusion** — combine the BM25 `search` and `vector_search` result lists. Likely RRF (rank-based, sidesteps the normalization problem elegantly). Raw Python first (contract rule #4).
+3. **Add Cohere reranker** — new dep (atomic commit with the code). Rerank the fused candidate list. Cohere `rerank` API, free tier.
+4. **Re-run the SAME harness** (retriever-agnostic payoff again — new `search_fn` adapter, `evaluate` untouched). Get hybrid+rerank Recall@3. Audit which chunks pass. Compare vs 100% vector baseline — and specifically check whether `derivative instruments` climbs back to rank 2.
 
-**Recommended order:** finish multi-company (path 1) first — it's a small, honest close-out that makes the eval real (4/4 on one company is thin), THEN 5.5, THEN 6. But Rohit's call.
-
-### Carried-forward items (don't lose these):
-- **Multi-company index loop + `uuid5` ids** — see path 1 above. The `id=i` → per-company collision is the concrete trigger.
-- **Async search path** — when `vector_search` enters FastAPI, switch its client to `AsyncQdrantClient` + `async def` + `await client.query_points(...)`. The sync version in `search.py` is correct for the standalone eval script; the served endpoint must be async.
-- **Grow Tier 2** toward 25 hand-written natural-language pairs (Module 9). Currently 1 item — the seed. 4/4 is a thin benchmark; more items = a real number.
-- **`net sales` substring is loose** — passes for a slightly-lucky reason. When expanding Tier 2, tighten to point at the income-statement chunk specifically, or document. Flag.
-- **Tables (Item 8 / income statement) survive as mangled text with blanked figures** — flag for answer-generation phase. Retrieval fine; generation will need real numbers. (Structure-aware chunking or table extraction is the eventual fix — deferred.)
+### Carried-forward flags (don't lose these):
+- **Async search path** — when `vector_search` enters a FastAPI endpoint, switch to `AsyncQdrantClient` + `async def` + `await client.query_points(...)`. Sync `search.py` is correct for the standalone eval script only.
+- **Cross-company "compare" retrieval** (correctly PARKED Chat 7) — "compare Apple vs Tesla R&D" needs chunks from multiple companies. Needs a different filter (`should`/`MatchAny`), a different success metric (one substring can't express "got both"), NOT a `company: list` hack on the current single-substring eval. Great frontend-demo query later. Don't build into the current eval.
+- **`net sales` substring is loose** — tighten when growing Tier 2.
+- **`Powerwall` is 1-of-1 in TSLA corpus** — re-chunking could move it into a non-retrieved chunk → silent FAIL. Consider a more robust tsla substring when expanding eval.
+- **Tables / income statement = mangled text, $ figures blanked** (chunk 153: `Products $ $ $`). Retrieval fine, answer-generation will need real numbers. Flag, don't solve in retrieval phase.
+- **Grow Tier 2** toward 25 hand-written pairs (Module 9). 8/8 is a clean sweep = eval is still easy (Tier-1 near-tautological). The 100% proves the pipeline is wired end-to-end multi-company, NOT that retrieval is excellent.
+- **Collection name hardcoded `'filings'` in `search.py`** — sync with `settings` like `index.py`. Cosmetic.
+- **`get_or_create_collections` non-destructive** — won't re-embed if chunks change. When re-chunking, drop the collection (hit this exact issue Chat 7).
+- **Module-level clients** (`OpenAI()`, `QdrantClient()`) fire at import time. Fine now; lazy/injected when imported widely.
 - **`verbose` flag on harness** — make printing optional when `evaluate` graduates into `tests/`.
-- **Collection name hardcoded `'filings'` in `search.py`** — sync with `settings.QDRANT_COLLECTION_NAME or "filings"` like `index.py`. Cosmetic.
-- **`get_or_create_collections` is non-destructive** — won't re-embed if chunks change. Fine while data is fixed; when re-chunking, drop the collection or use overwrite-stable ids.
-- **Module-level `OpenAI()` / `QdrantClient()` clients** — fire at import time. Fine now; consider lazy/injected when imported widely. Flag, don't solve.
 
 ---
 
 ## Open questions / known gotchas
 
-- **`requires-python = ">=3.13"`** — aggressive; soften to `>=3.12` if deploy platform lacks 3.13.
-- **No `.dockerignore`** — needed when FastAPI Dockerfile lands (Module 12).
-- **No tests yet** — `tests/test_ingest.py`, `tests/test_retrieve.py`, `tests/test_evaluate.py` (assert recall on a fixed mini-corpus) all naturals now.
-- **No formatter run project-wide** — a `ruff`/`black` pass cleans nits (incl. the `search_fn = lambda` E731) in one shot.
-- **Numbers split on commas in BM25 tokenizer** — `"$1,000"` → `["1","000"]`. Accepted for baseline.
-- **`except Exception as e` in `/health`** — `e` unused. Cosmetic.
+- `requires-python = ">=3.13"` — aggressive; soften to `>=3.12` if deploy platform lacks 3.13.
+- No `.dockerignore` — needed when FastAPI Dockerfile lands (Module 12).
+- No tests yet — `tests/test_ingest.py`, `tests/test_retrieve.py`, `tests/test_evaluate.py` all naturals.
+- No formatter run project-wide — a `ruff`/`black` pass cleans nits in one shot.
+- `except Exception as e` in `/health` — `e` unused. Cosmetic.
 
 ---
 
@@ -161,24 +150,24 @@ Two honest paths — pick with a reason in front of you:
 2. **No line-by-line dictation.** Function-level building.
 3. **No pasted code before Rohit attempts.** In learning mode, Claude refuses to "just write it."
 4. **Raw Python before framework.** Build from scratch ONCE, then show the framework version.
-5. **Vectorless before vector.** Honest baseline first. (Done — BM25 75% before any vectors.)
-6. **Production-shape from commit #1.** No "refactor later."
+5. **Vectorless before vector.** (Done — BM25 75% before vectors.)
+6. **Production-shape from commit #1.**
 7. **Docker from the start.**
-8. **Eval numbers before bragging.** Module 9 is the truth gate. (M5 honored this: 100% is measured + audited, not claimed.)
+8. **Eval numbers before bragging.** (M5 honored: 100% / 8/8 measured + audited, not claimed.)
 9. **Every module/sub-step ends with a checkpoint** — Rohit answers/implements BEFORE the reference appears.
-10. **Rohit never keeps a line he can't explain.** (Enforced this chat: the `.index`-sort line was explained before kept.)
+10. **Rohit never keeps a line he can't explain.**
 11. **No interview Q&A in public READMEs.**
-12. **Failure-modes framework as recurring lens** — name which mode each feature kills (or flag when operational). Eval MEASURES whether a fix worked; it doesn't fix a mode.
-13. **Audit Claude.** Trust EDGAR/live source/Rohit's machine over Claude's memory; don't fabricate terminal output, URLs, filenames. **Audit the green check — read which chunk passed, don't trust the substring match.**
+12. **Failure-modes framework as recurring lens** — name which mode each feature kills (or flag operational). NOTE: the uuid5 id fix was correctly classified as an OPERATIONAL/data-integrity fix, not a RAG-quality mode (though it has a downstream recall consequence — overwritten chunks can't be retrieved).
+13. **Audit Claude.** Trust EDGAR/live source/Rohit's machine over Claude's memory; don't fabricate terminal output, URLs, filenames. **Audit the green check — read which chunk passed, full text if the snippet truncates.** (Caught the `aapl: 398` collision AND verified the Powerwall pass this chat.)
 14. **Hold-questions go at the END of a sub-step, in their own clearly-marked block, after the commit step.**
-15. **Hold-questions must be VISUALLY DISTINCT** — under a marked header (`### ⛳ HOLD-QUESTIONS`), bold/blockquote, never plain trailing prose. Restate if a reply skips them.
+15. **Hold-questions must be VISUALLY DISTINCT** — `### ⛳ HOLD-QUESTIONS`, bold/blockquote. Restate if a reply skips them.
 
 ### Handoff protocol (Claude owns this)
 1. Update PROGRESS.md (full state, latest commit) — real downloadable file artifact.
 2. Fresh NEXT_CHAT_KICKOFF.md reflecting exact resume point — real file artifact.
-3. SESSION_BRIEF.md only if rules/decisions fundamentally changed.
-4. Proactively flag "context getting tight" at ~60–70% (Rohit's budget ~80% — honor it).
-5. Hand off at a clean milestone (after a commit / end of sub-step), not mid-implementation. **Chat 6: handed off AFTER Module 5 complete + committed + pushed (`10d3009`), vectors beat baseline 100% vs 75% — clean milestone.**
+3. SESSION_BRIEF.md only if rules/decisions fundamentally changed (Chat 7: NOT changed, reuse).
+4. Proactively flag "context getting tight" at ~80% (Rohit's budget).
+5. Hand off at a clean milestone (after a commit / end of sub-step), not mid-implementation. **Chat 7: handed off AFTER Module 5 fully complete (multi-company) + committed + pushed (`af40542`), 8/8 across three companies. Clean milestone.**
 
 ### Steering commands
 `next` · `deeper` · `expand this point` · `skip` · `code` (build mode) · `quiz me` · `real-world` · `hireable?` · `product` · `reset rules`
@@ -196,9 +185,9 @@ Two honest paths — pick with a reason in front of you:
 
 ## Reference repos (use as guides, REBUILD never clone)
 
-- **`pdichone/production-course-main-code`** — technique grab-bag; key file `rag_pipeline.py`.
-- **`pdichone/fcc-production-rag-part-6`** — 2026 advanced; `02_contextual_retrieval.py` (M5.5) + `04_agentic_rag.py` (M8).
-- **`pdichone/lang-production-api`** — production-shape template; `app/` layout, `render.yml`, `test_cache_demo.py` caching. NOT copying Streamlit UI (we use Next.js).
+- **`pdichone/production-course-main-code`** — technique grab-bag; `rag_pipeline.py`.
+- **`pdichone/fcc-production-rag-part-6`** — 2026 advanced; `02_contextual_retrieval.py` (M5.5, now END) + `04_agentic_rag.py` (M8).
+- **`pdichone/lang-production-api`** — production-shape template; `app/` layout, `render.yml`, `test_cache_demo.py` caching. NOT copying Streamlit (we use Next.js).
 
 **Flag:** these repos use ChromaDB + Streamlit. We use Qdrant + Next.js. Translate patterns, don't copy API calls.
 
@@ -209,22 +198,20 @@ Two honest paths — pick with a reason in front of you:
 ```
 secfiler-rag/
 ├── .env                       ← gitignored, real OPENAI_API_KEY + QDRANT_URL
-├── .env.example               ← committed, template
-├── .gitignore                 ← + scratch_bm25.py + aapl_clean.txt
+├── .env.example               ← committed
+├── .gitignore                 ← + scratch_bm25.py + aapl_clean.txt + msft_clean.txt + tsla_clean.txt
 ├── .python-version            ← "3.13"
 ├── docker-compose.yml         ← Qdrant v1.18.2 pinned
-├── pyproject.toml             ← 7 deps (openai added Chat 6)
+├── pyproject.toml             ← 7 deps (cohere lands Module 6)
 ├── uv.lock                    ← committed
 ├── README.md                  ← one-line placeholder
 ├── PROGRESS.md                ← THIS FILE
-├── scratch_bm25.py            ← gitignored throwaway driver
-├── aapl_clean.txt             ← gitignored cleaned-text dump
 ├── evals/
-│   └── eval_set.py            ← TIER_1 + TIER_2, EVAL_SET (Chat 5)
+│   └── eval_set.py            ← TIER_1 (5: 3 aapl + 1 msft + 1 tsla) + TIER_2 (3: 1 aapl + 1 msft + 1 tsla). EVAL_SET = 8 items
 ├── data/
 │   ├── .gitkeep               ← tracked
 │   └── raw/                   ← gitignored: aapl-2025.htm, msft-2025.htm, tsla-2025.htm
-├── qdrant_storage/            ← gitignored (now holds 199 AAPL points)
+├── qdrant_storage/            ← gitignored (holds 768 points: aapl 199 / msft 270 / tsla 299)
 ├── src/
 │   └── secfiler_rag/
 │       ├── __init__.py
@@ -236,10 +223,10 @@ secfiler-rag/
 │       │   ├── __init__.py
 │       │   ├── ingest.py      ← load_filing_text + chunk_text
 │       │   ├── retrieve.py    ← tokenize + build_bm25_index + search (BM25)
-│       │   ├── evaluate.py    ← retriever-agnostic evaluate() + BM25 caller (75%)
-│       │   ├── embed.py       ← NEW Chat 6: embed_texts() + cosine()
-│       │   ├── index.py       ← NEW Chat 6: get_or_create_collections() + index_chunks() + AAPL indexer
-│       │   └── search.py      ← NEW Chat 6: vector_search() + eval re-run (100%)
+│       │   ├── evaluate.py    ← retriever-agnostic evaluate() + BM25 caller (75%, AAPL)
+│       │   ├── embed.py       ← embed_texts() + cosine()
+│       │   ├── index.py       ← get_or_create_collections() + index_chunks() (uuid5) + multi-company indexer + per-company count verify
+│       │   └── search.py      ← vector_search(query, company, top_k) + company-routed eval caller (100% / 8/8)
 │       └── models/__init__.py
 └── tests/
     └── __init__.py            ← no tests yet
@@ -247,4 +234,4 @@ secfiler-rag/
 
 ---
 
-*Last updated: end of Chat 6 (Module 5 COMPLETE — vector retrieval built end to end: embed_texts + cosine proof (0.54 vs 0.18), Qdrant index of 199 AAPL points verified, vector_search re-ran the SAME retriever-agnostic harness → **Recall@3 = 100% (4/4), beating BM25's 75%**. Blind-spot revenue→net sales flipped FAIL→PASS at rank 1, audited as the correct income-statement chunk. Honest finding: vectors lose to BM25 on exact-lexical (derivative instruments dropped rank 2→3) — the measured case for hybrid. Commits `0e95dcb` → `268c60d` → `10d3009`, all pushed). Next: finish multi-company (MSFT/TSLA, uuid5 ids) then Module 5.5 Contextual Retrieval, then Module 6 hybrid. Update at the end of every session.*
+*Last updated: end of Chat 7 (Module 5 FULLY COMPLETE — multi-company. Switched Qdrant ids to `uuid5` (collision-proof + idempotent); the per-company count check CAUGHT a live `aapl: 398` duplication from the int→uuid5 scheme transition, fixed via clean rebuild → aapl=199, msft=270, tsla=299. Added company payload-filter routing (Option A) to `vector_search` keeping `evaluate` frozen via a `company_by_query` + named `search_fn` adapter. Added 2 msft + 2 tsla eval items (substrings grepped from cleaned text). **Recall@3 = 100% (8/8) across all three companies, every pass audited at chunk level** including a full-text `in` check on the truncated Powerwall match. Commits `60a7c8d` → `af40542`, pushed. **Decision: Module 5.5 Contextual Retrieval moved to the VERY END as extras/polish.** Next: Module 6 Hybrid + Cohere rerank — motivation already measured (derivative instruments: BM25 rank 2 > vectors rank 3). Update at the end of every session.*
